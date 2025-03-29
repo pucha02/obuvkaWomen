@@ -605,10 +605,8 @@ import credentials from './obuvkawomenintegration-ce5d5ef3521a.json' assert { ty
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Разрешаем CORS (например, для http://127.0.0.1:5500)
-// app.use(cors({ origin: 'http://127.0.0.1:5500' }));
+// Разрешаем CORS
 app.use(cors());
-
 app.use(express.json());
 
 // Определяем путь к статическим файлам (интерфейс)
@@ -618,9 +616,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // -----------------------
 // Конфигурация Google Sheets и KeyCRM
-const GOOGLE_SHEET_ID = '1v3K90NUCZukJ8xhr_9YXfoDrxoe2qlxlQPdh29ONAF4';
+const GOOGLE_SHEET_ID = '1NHd9JVWQ7yriMVbavebqotFzdw0iexuRrI4sCY9p5kg';
 const keycrmUrlStock = "https://openapi.keycrm.app/v1/order";
-const keycrmToken = "OGM1YTM1MzA3ZTYzMDE0OTEwNDdlMGI2Mjg2NTlmMGFjMjU4YTE3OQ";
+const keycrmToken = "NDUyZTNjNjk0OGM5NTc2YWYxNGIyN2YxYTIyYzM3YTQwMzUwNzQxZg";
 
 // Заголовки для данных из Sheets (порядок соответствует колонкам)
 const headers = [
@@ -643,9 +641,7 @@ const DB_NAME = 'test';
 const PROGRESS_COLLECTION = 'progress';
 
 async function getMongoClient() {
-  const client = new MongoClient(MONGODB_URI, {
-    tls: true,
-  });
+  const client = new MongoClient(MONGODB_URI, { tls: true });
   await client.connect();
   return client;
 }
@@ -707,6 +703,20 @@ async function getSourcesMapping(db) {
   return mapping;
 }
 
+// Функции для сохранения и получения состояния паузы
+async function getPauseStatus(db) {
+  const setting = await db.collection('settings').findOne({ key: 'isRunning' });
+  return setting ? setting.value : true; // по умолчанию true
+}
+
+async function updatePauseStatus(db, status) {
+  await db.collection('settings').updateOne(
+    { key: 'isRunning' },
+    { $set: { value: status } },
+    { upsert: true }
+  );
+}
+
 async function transferData() {
   const logs = [];
   const mongoClient = await getMongoClient();
@@ -745,7 +755,7 @@ async function transferData() {
       });
       logs.push({ event: "processRow", row: i, data });
 
-      // Используем маппинги из БД: если не найдено – оставляем 0 или можно задать другое значение по умолчанию
+      // Используем маппинги из БД
       data["statusId"] = statusesMapping[data["статус"]] || 0;
       data["sourceId"] = sourcesMapping[data["Источник"]] || 0;
 
@@ -866,6 +876,19 @@ let transferIntervalId = null;
 let isRunning = true;
 let isProcessing = false;
 
+// При старте получаем текущее состояние работы
+(async () => {
+  try {
+    const client = await getMongoClient();
+    const db = client.db(DB_NAME);
+    isRunning = await getPauseStatus(db);
+    await client.close();
+    console.log(`Состояние передачи: ${isRunning ? 'Работает' : 'На паузе'}`);
+  } catch (error) {
+    console.error("Ошибка получения состояния паузы:", error);
+  }
+})();
+
 function scheduleTransfer() {
   if (transferIntervalId) clearInterval(transferIntervalId);
   const intervalMs = transferIntervalMinutes * 60 * 1000;
@@ -902,14 +925,43 @@ app.post('/transferInterval', (req, res) => {
   res.json({ success: true, transferIntervalMinutes });
 });
 
-app.post('/pauseTransfer', (req, res) => {
+app.post('/pauseTransfer', async (req, res) => {
   isRunning = false;
-  res.json({ success: true, message: "Передача данных приостановлена." });
+  try {
+    const client = await getMongoClient();
+    const db = client.db(DB_NAME);
+    await updatePauseStatus(db, isRunning);
+    await client.close();
+    res.json({ success: true, message: "Передача данных приостановлена.", isRunning });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
-app.post('/resumeTransfer', (req, res) => {
+app.post('/resumeTransfer', async (req, res) => {
   isRunning = true;
-  res.json({ success: true, message: "Передача данных возобновлена." });
+  try {
+    const client = await getMongoClient();
+    const db = client.db(DB_NAME);
+    await updatePauseStatus(db, isRunning);
+    await client.close();
+    res.json({ success: true, message: "Передача данных возобновлена.", isRunning });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Новый эндпоинт для получения текущего состояния паузы
+app.get('/pauseStatus', async (req, res) => {
+  try {
+    const client = await getMongoClient();
+    const db = client.db(DB_NAME);
+    const pauseStatus = await getPauseStatus(db);
+    await client.close();
+    res.json({ isRunning: pauseStatus });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/lastIndex', async (req, res) => {

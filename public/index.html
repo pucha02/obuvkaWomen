@@ -35,6 +35,13 @@
       <div id="controlMessage"></div>
     </div>
 
+    <!-- Новая секция для отображения статуса передачи -->
+    <h2>Статус передачи данных</h2>
+    <div id="statusContainer">
+      <p>Скрипт: <span id="currentStatus">-</span></p>
+      <button id="refreshStatusBtn">Обновить статус</button>
+    </div>
+
     <!-- Новая секция для работы со статусами -->
     <h2>Настройка статусов</h2>
     <div id="statusesContainer">
@@ -114,9 +121,22 @@
       }
     }
 
-    // Обновляем lastIndex и интервал при загрузке страницы
+    // Функция для получения текущего статуса передачи (пауза/работает)
+    async function fetchPauseStatus() {
+      try {
+        const response = await fetch('http://localhost:3000/pauseStatus');
+        const data = await response.json();
+        const statusText = data.isRunning ? 'Работает' : 'На паузе';
+        document.getElementById('currentStatus').textContent = statusText;
+      } catch (error) {
+        console.error('Ошибка получения статуса передачи:', error);
+      }
+    }
+
+    // Обновляем lastIndex, интервал и статус при загрузке страницы
     fetchLastIndex();
     fetchInterval();
+    fetchPauseStatus();
 
     document.getElementById('transferBtn').addEventListener('click', async () => {
       const reportContainer = document.getElementById('reportContainer');
@@ -189,6 +209,7 @@
         const response = await fetch('http://localhost:3000/pauseTransfer', { method: 'POST' });
         const data = await response.json();
         controlMessage.textContent = data.message;
+        fetchPauseStatus();
       } catch (error) {
         controlMessage.textContent = `Ошибка: ${error.message}`;
       }
@@ -201,10 +222,14 @@
         const response = await fetch('http://localhost:3000/resumeTransfer', { method: 'POST' });
         const data = await response.json();
         controlMessage.textContent = data.message;
+        fetchPauseStatus();
       } catch (error) {
         controlMessage.textContent = `Ошибка: ${error.message}`;
       }
     });
+
+    // Обработчик для обновления статуса по кнопке "Обновить статус"
+    document.getElementById('refreshStatusBtn').addEventListener('click', fetchPauseStatus);
 
     // Обработчик для добавления/обновления статуса
     document.getElementById('addStatusBtn').addEventListener('click', async () => {
