@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Отчёт передачи данных</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Отчёт по передаче данных</h1>
+    <p>Нажмите кнопку ниже, чтобы запустить передачу данных вручную. После завершения будет выведён краткий отчёт.</p>
+    <button id="transferBtn">Запустить передачу данных</button>
+    <div id="reportContainer"></div>
+
+    <h2>Редактирование lastIndex</h2>
+    <div id="lastIndexContainer">
+      <p>Текущий lastIndex: <span id="currentLastIndex">-</span></p>
+      <input type="number" id="lastIndexInput" placeholder="Введите новый lastIndex">
+      <button id="updateLastIndexBtn">Обновить lastIndex</button>
+      <div id="updateMessage"></div>
+    </div>
+
+    <h2>Настройка интервала передачи данных</h2>
+    <div id="intervalContainer">
+      <p>Текущий интервал: <span id="currentInterval">-</span> минут</p>
+      <input type="number" id="intervalInput" placeholder="Введите интервал в минутах">
+      <button id="updateIntervalBtn">Обновить интервал</button>
+      <div id="intervalMessage"></div>
+    </div>
+
+    <h2>Управление работой скрипта</h2>
+    <div id="controlContainer">
+      <button id="pauseBtn">Пауза</button>
+      <button id="resumeBtn">Возобновить</button>
+      <div id="controlMessage"></div>
+    </div>
+
+    <!-- Новая секция для работы со статусами -->
+    <h2>Настройка статусов</h2>
+    <div id="statusesContainer">
+      <input type="text" id="statusNameInput" placeholder="Название статуса">
+      <input type="number" id="statusIdInput" placeholder="ID статуса">
+      <button id="addStatusBtn">Добавить статус</button>
+      <div id="statusMessage"></div>
+    </div>
+
+    <!-- Новая секция для работы с источниками -->
+    <h2>Настройка источников</h2>
+    <div id="sourcesContainer">
+      <input type="text" id="sourceNameInput" placeholder="Название источника">
+      <input type="number" id="sourceIdInput" placeholder="ID источника">
+      <button id="addSourceBtn">Добавить источник</button>
+      <div id="sourceMessage"></div>
+    </div>
+  </div>
+  <script>
+    // Функция для создания таблицы отчёта из массива логов
+    function createReport(logs) {
+      const table = document.createElement('table');
+      table.className = 'log-table';
+      const headerRow = document.createElement('tr');
+      const headers = ['№', 'Событие', 'Строка', 'Сообщение'];
+      headers.forEach(text => {
+        const th = document.createElement('th');
+        th.textContent = text;
+        headerRow.appendChild(th);
+      });
+      table.appendChild(headerRow);
+      logs.forEach((log, index) => {
+        const row = document.createElement('tr');
+        const serialCell = document.createElement('td');
+        serialCell.textContent = index + 1;
+        row.appendChild(serialCell);
+        const eventCell = document.createElement('td');
+        eventCell.textContent = log.event || '';
+        row.appendChild(eventCell);
+        const rowCell = document.createElement('td');
+        rowCell.textContent = log.row !== undefined ? log.row : '';
+        row.appendChild(rowCell);
+        const messageCell = document.createElement('td');
+        let msg = log.message || '';
+        if (!msg && log.data) {
+          msg = `Артикул: ${log.data["Артикул"] || 'N/A'}, Товар: ${log.data["Товар"] || 'N/A'}`;
+        }
+        if (!msg && log.details) {
+          msg = `Статус: ${log.details.status_id || 'N/A'}, Комментарий: ${log.details.client_comment || ''}`;
+        }
+        messageCell.textContent = msg;
+        row.appendChild(messageCell);
+        table.appendChild(row);
+      });
+      return table;
+    }
+
+    async function fetchLastIndex() {
+      try {
+        const response = await fetch('http://localhost:3000/lastIndex');
+        const data = await response.json();
+        document.getElementById('currentLastIndex').textContent = data.lastIndex;
+        document.getElementById('lastIndexInput').value = data.lastIndex;
+      } catch (error) {
+        console.error('Ошибка получения lastIndex:', error);
+      }
+    }
+
+    async function fetchInterval() {
+      try {
+        const response = await fetch('http://localhost:3000/transferInterval');
+        const data = await response.json();
+        document.getElementById('currentInterval').textContent = data.transferIntervalMinutes;
+        document.getElementById('intervalInput').value = data.transferIntervalMinutes;
+      } catch (error) {
+        console.error('Ошибка получения интервала:', error);
+      }
+    }
+
+    // Обновляем lastIndex и интервал при загрузке страницы
+    fetchLastIndex();
+    fetchInterval();
+
+    document.getElementById('transferBtn').addEventListener('click', async () => {
+      const reportContainer = document.getElementById('reportContainer');
+      reportContainer.innerHTML = '<p>Передача данных…</p>';
+      try {
+        const response = await fetch('http://localhost:3000/transfer', { method: 'POST' });
+        const data = await response.json();
+        if (response.ok) {
+          const logs = data.logs || [];
+          const reportTable = createReport(logs);
+          reportContainer.innerHTML = '';
+          reportContainer.appendChild(reportTable);
+          fetchLastIndex();
+        } else {
+          reportContainer.innerHTML = `<p>Ошибка: ${data.error}</p>`;
+        }
+      } catch (error) {
+        reportContainer.innerHTML = `<p>Ошибка: ${error.message}</p>`;
+      }
+    });
+
+    document.getElementById('updateLastIndexBtn').addEventListener('click', async () => {
+      const newIndex = document.getElementById('lastIndexInput').value;
+      const updateMessage = document.getElementById('updateMessage');
+      updateMessage.textContent = 'Обновление...';
+      try {
+        const response = await fetch('http://localhost:3000/lastIndex', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lastIndex: Number(newIndex) })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          updateMessage.textContent = `lastIndex обновлён: ${data.lastIndex}`;
+          fetchLastIndex();
+        } else {
+          updateMessage.textContent = `Ошибка: ${data.error}`;
+        }
+      } catch (error) {
+        updateMessage.textContent = `Ошибка: ${error.message}`;
+      }
+    });
+
+    document.getElementById('updateIntervalBtn').addEventListener('click', async () => {
+      const newInterval = document.getElementById('intervalInput').value;
+      const intervalMessage = document.getElementById('intervalMessage');
+      intervalMessage.textContent = 'Обновление интервала...';
+      try {
+        const response = await fetch('http://localhost:3000/transferInterval', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transferInterval: Number(newInterval) })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          intervalMessage.textContent = `Интервал обновлён: ${data.transferIntervalMinutes} минут`;
+          fetchInterval();
+        } else {
+          intervalMessage.textContent = `Ошибка: ${data.error}`;
+        }
+      } catch (error) {
+        intervalMessage.textContent = `Ошибка: ${error.message}`;
+      }
+    });
+
+    document.getElementById('pauseBtn').addEventListener('click', async () => {
+      const controlMessage = document.getElementById('controlMessage');
+      controlMessage.textContent = 'Остановка скрипта...';
+      try {
+        const response = await fetch('http://localhost:3000/pauseTransfer', { method: 'POST' });
+        const data = await response.json();
+        controlMessage.textContent = data.message;
+      } catch (error) {
+        controlMessage.textContent = `Ошибка: ${error.message}`;
+      }
+    });
+
+    document.getElementById('resumeBtn').addEventListener('click', async () => {
+      const controlMessage = document.getElementById('controlMessage');
+      controlMessage.textContent = 'Возобновление скрипта...';
+      try {
+        const response = await fetch('http://localhost:3000/resumeTransfer', { method: 'POST' });
+        const data = await response.json();
+        controlMessage.textContent = data.message;
+      } catch (error) {
+        controlMessage.textContent = `Ошибка: ${error.message}`;
+      }
+    });
+
+    // Обработчик для добавления/обновления статуса
+    document.getElementById('addStatusBtn').addEventListener('click', async () => {
+      const name = document.getElementById('statusNameInput').value;
+      const id = document.getElementById('statusIdInput').value;
+      const statusMessage = document.getElementById('statusMessage');
+      statusMessage.textContent = 'Сохранение...';
+      try {
+        const response = await fetch('http://localhost:3000/statuses', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, id: Number(id) })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          statusMessage.textContent = 'Статус успешно сохранён.';
+        } else {
+          statusMessage.textContent = `Ошибка: ${data.error}`;
+        }
+      } catch (error) {
+        statusMessage.textContent = `Ошибка: ${error.message}`;
+      }
+    });
+
+    // Обработчик для добавления/обновления источника
+    document.getElementById('addSourceBtn').addEventListener('click', async () => {
+      const name = document.getElementById('sourceNameInput').value;
+      const id = document.getElementById('sourceIdInput').value;
+      const sourceMessage = document.getElementById('sourceMessage');
+      sourceMessage.textContent = 'Сохранение...';
+      try {
+        const response = await fetch('http://localhost:3000/sources', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, id: Number(id) })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          sourceMessage.textContent = 'Источник успешно сохранён.';
+        } else {
+          sourceMessage.textContent = `Ошибка: ${data.error}`;
+        }
+      } catch (error) {
+        sourceMessage.textContent = `Ошибка: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html>
