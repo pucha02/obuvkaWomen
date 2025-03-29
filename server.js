@@ -606,7 +606,9 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 // Разрешаем CORS (например, для http://127.0.0.1:5500)
-app.use(cors({ origin: 'http://127.0.0.1:5500' }));
+// app.use(cors({ origin: 'http://127.0.0.1:5500' }));
+app.use(cors());
+
 app.use(express.json());
 
 // Определяем путь к статическим файлам (интерфейс)
